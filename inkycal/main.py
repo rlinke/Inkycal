@@ -239,16 +239,92 @@ class Inkycal:
 
     self._assemble()
 
+  def run_once(self, upside_down, counter):
+    """ runs the main loop once and returns
+    
+    run_once generates the image from all modules, 
+    assembles them in one image, refreshes the E-Paper.
+    For using the script in a cron job
+    """
+
+    current_time = arrow.now(tz=get_system_tz())
+
+    print(f"Date: {current_time.format('D MMM YY')} | "
+          f"Time: {current_time.format('HH:mm')}")
+    print('Generating images for all modules...', end='')
+
+    errors = [] # store module numbers in here
+
+    # short info for info-section
+    self.info = f"{current_time.format('D MMM @ HH:mm')}  "
+
+    for number in range(1, self._module_number):
+
+      name = eval(f"self.module_{number}.name")
+      module = eval(f'self.module_{number}')
+
+      try:
+        black,colour=module.generate_image()
+        black.save(f"{self.image_folder}/module{number}_black.png", "PNG")
+        colour.save(f"{self.image_folder}/module{number}_colour.png", "PNG")
+        self.info += f"module {number}: OK  "
+      except Exception as Error:
+        errors.append(number)
+        print('error!')
+        print(traceback.format_exc())
+        self.info += f"module {number}: error!  "
+        logger.exception(f'Exception in module {number}')
+
+    if errors:
+      print('error/s in modules:',*errors)
+      counter = 0
+    else:
+      counter += 1
+      print('successful')
+    del errors
+
+    # Assemble image from each module - add info section if specified
+    self._assemble()
+
+    # Check if image should be rendered
+    if self.render == True:
+      Display = self.Display
+
+      self._calibration_check()
+
+      if self.supports_colour == True:
+        im_black = Image.open(f"{self.image_folder}/canvas.png")
+        im_colour = Image.open(f"{self.image_folder}/canvas_colour.png")
+
+        # Flip the image by 180° if required
+        if self.settings['orientation'] == 180:
+          im_black = upside_down(im_black)
+          im_colour = upside_down(im_colour)
+
+        # render the image on the display
+        Display.render(im_black, im_colour)
+
+      # Part for black-white ePapers
+      elif self.supports_colour == False:
+
+        im_black = self._merge_bands()
+
+        # Flip the image by 180° if required
+        if self.settings['orientation'] == 180:
+          im_black = upside_down(im_black)
+
+        Display.render(im_black)
+
+    return counter
+
+  
   def run(self):
     """Runs main program in nonstop mode.
 
-    Uses a infinity loop to run Inkycal nonstop. Inkycal generates the image
-    from all modules, assembles them in one image, refreshed the E-Paper and
-    then sleeps until the next sheduled update.
+    Uses a infinity loop to run Inkycal nonstop. 
+    Executes the run_once function and then sleeps 
+    until the next sheduled update.
     """
-
-    # Get the time of initial run
-    runtime = arrow.now()
 
     # Function to flip images upside down
     upside_down = lambda image: image.rotate(180, expand=True)
@@ -259,73 +335,11 @@ class Inkycal:
     print(f'Inkycal version: v{self._release}')
     print(f'Selected E-paper display: {self.settings["model"]}')
 
+    # Get the time of initial run
+    runtime = arrow.now()
+
     while True:
-      current_time = arrow.now(tz=get_system_tz())
-      print(f"Date: {current_time.format('D MMM YY')} | "
-            f"Time: {current_time.format('HH:mm')}")
-      print('Generating images for all modules...', end='')
-
-      errors = [] # store module numbers in here
-
-      # short info for info-section
-      self.info = f"{current_time.format('D MMM @ HH:mm')}  "
-
-      for number in range(1, self._module_number):
-
-        name = eval(f"self.module_{number}.name")
-        module = eval(f'self.module_{number}')
-
-        try:
-          black,colour=module.generate_image()
-          black.save(f"{self.image_folder}/module{number}_black.png", "PNG")
-          colour.save(f"{self.image_folder}/module{number}_colour.png", "PNG")
-          self.info += f"module {number}: OK  "
-        except Exception as Error:
-          errors.append(number)
-          print('error!')
-          print(traceback.format_exc())
-          self.info += f"module {number}: error!  "
-          logger.exception(f'Exception in module {number}')
-
-      if errors:
-        print('error/s in modules:',*errors)
-        counter = 0
-      else:
-        counter += 1
-        print('successful')
-      del errors
-
-      # Assemble image from each module - add info section if specified
-      self._assemble()
-
-      # Check if image should be rendered
-      if self.render == True:
-        Display = self.Display
-
-        self._calibration_check()
-
-        if self.supports_colour == True:
-          im_black = Image.open(f"{self.image_folder}/canvas.png")
-          im_colour = Image.open(f"{self.image_folder}/canvas_colour.png")
-
-          # Flip the image by 180° if required
-          if self.settings['orientation'] == 180:
-            im_black = upside_down(im_black)
-            im_colour = upside_down(im_colour)
-
-          # render the image on the display
-          Display.render(im_black, im_colour)
-
-        # Part for black-white ePapers
-        elif self.supports_colour == False:
-
-          im_black = self._merge_bands()
-
-          # Flip the image by 180° if required
-          if self.settings['orientation'] == 180:
-            im_black = upside_down(im_black)
-
-          Display.render(im_black)
+      counter = self.run_once(upside_down, counter)
 
       print(f'\nNo errors since {counter} display updates \n'
             f'program started {runtime.humanize()}')
