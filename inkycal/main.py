@@ -239,7 +239,7 @@ class Inkycal:
 
     self._assemble()
 
-  def run_once(self, upside_down, counter):
+  def _run_once(self, upside_down, counter):
     """ runs the main loop once and returns
     
     run_once generates the image from all modules, 
@@ -317,6 +317,25 @@ class Inkycal:
 
     return counter
 
+  def run_once(self):
+     # Function to flip images upside down
+    upside_down = lambda image: image.rotate(180, expand=True)
+
+    # Count the number of times without any errors
+    counter = 0
+
+    print(f'Inkycal version: v{self._release}')
+    print(f'Selected E-paper display: {self.settings["model"]}')
+
+    # Get the time of initial run
+    runtime = arrow.now()
+
+    counter = self._run_once(upside_down, counter)
+
+    print(f'Finished single run.\n'
+          f'program started {runtime.humanize()}')
+
+   
   
   def run(self):
     """Runs main program in nonstop mode.
@@ -339,13 +358,14 @@ class Inkycal:
     runtime = arrow.now()
 
     while True:
-      counter = self.run_once(upside_down, counter)
+      counter = self._run_once(upside_down, counter)
 
       print(f'\nNo errors since {counter} display updates \n'
             f'program started {runtime.humanize()}')
 
       sleep_time = self.countdown()
       time.sleep(sleep_time)
+
 
   def _merge_bands(self):
     """Merges black and coloured bands for black-white ePapers
